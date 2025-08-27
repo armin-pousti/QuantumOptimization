@@ -1,361 +1,319 @@
 #!/usr/bin/env python3
 """
-Portfolio Analysis and Visualization Script
-Generates comprehensive graphs and comparisons for portfolio optimization report
+Portfolio Analysis and Visualization
+Interactive analysis comparing classical and quantum portfolio optimization
 """
 
 import json
-import numpy as np
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from datetime import datetime, timedelta
+from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
-# Import portfolio functions
-import portfolio
-import main
+# Set style
+plt.style.use('seaborn-v0_8')
+sns.set_palette("husl")
 
-def load_input_data():
-    """Load input data from JSON file."""
-    with open("input.json", "r") as f:
-        data = json.load(f)
-    return data["data"]
 
-def run_portfolio_optimization(input_data, use_quantum=True):
-    """Run portfolio optimization with specified quantum setting."""
-    # Create a copy to avoid modifying original
-    test_data = input_data.copy()
-    test_data["use_quantum"] = use_quantum
+class PortfolioAnalyzer:
+    """Handles portfolio analysis and visualization."""
     
+    def __init__(self, input_file: str = "input.json"):
+        self.input_file = input_file
+        self.data = self._load_data()
+        self.assets = self.data.get("assets", {})
+        
+    def _load_data(self) -> dict:
+        """Load portfolio data from JSON file."""
+        try:
+            with open(self.input_file, "r") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Input file {self.input_file} not found")
+    
+    def run_analysis(self):
+        """Run complete portfolio analysis."""
+        print("🚀 Starting Portfolio Analysis...")
+        
+        # Run optimizations
+        classical_result = self._run_classical_optimization()
+        quantum_result = self._run_quantum_optimization()
+        
+        # Generate visualizations
+        self._create_portfolio_composition_charts(classical_result, quantum_result)
+        self._create_performance_comparison_charts(classical_result, quantum_result)
+        self._create_risk_return_charts(classical_result, quantum_result)
+        self._create_correlation_heatmap()
+        
+        # Print summary
+        self._print_summary_statistics(classical_result, quantum_result)
+        
+        print("✅ Analysis completed! Check the generated charts.")
+    
+    def _run_classical_optimization(self) -> dict:
+        """Run classical portfolio optimization."""
+        print("📊 Running classical optimization...")
+        
+        # Temporarily disable quantum optimization
+        temp_data = self.data.copy()
+        temp_data["use_quantum"] = False
+        
+        import main
+        return main.run(temp_data)
+    
+    def _run_quantum_optimization(self) -> dict:
+        """Run quantum portfolio optimization."""
+        print("⚛️  Running quantum optimization...")
+        
+        # Ensure quantum optimization is enabled
+        temp_data = self.data.copy()
+        temp_data["use_quantum"] = True
+        
+        import main
+        return main.run(temp_data)
+    
+    def _create_portfolio_composition_charts(self, classical_result: dict, quantum_result: dict):
+        """Create portfolio composition comparison charts."""
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+        
+        # Classical portfolio
+        classical_weights = classical_result.get("selected_assets_weights", {})
+        if classical_weights:
+            assets = list(classical_weights.keys())
+            weights = list(classical_weights.values())
+            
+            ax1.pie(weights, labels=assets, autopct='%1.1f%%', startangle=90)
+            ax1.set_title("Classical Portfolio Composition", fontsize=14, fontweight='bold')
+        
+        # Quantum portfolio
+        quantum_weights = quantum_result.get("selected_assets_weights", {})
+        if quantum_weights:
+            assets = list(quantum_weights.keys())
+            weights = list(quantum_weights.values())
+            
+            ax2.pie(weights, labels=assets, autopct='%1.1f%%', startangle=90)
+            ax2.set_title("Quantum Portfolio Composition", fontsize=14, fontweight='bold')
+        
+        plt.tight_layout()
+        plt.savefig("portfolio_composition.png", dpi=300, bbox_inches='tight')
+        plt.show()
+    
+    def _create_performance_comparison_charts(self, classical_result: dict, quantum_result: dict):
+        """Create performance comparison charts."""
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        
+        # Prepare data
+        classical_weights = classical_result.get("selected_assets_weights", {})
+        quantum_weights = quantum_result.get("selected_assets_weights", {})
+        
+        if classical_weights and quantum_weights:
+            # Weight comparison
+            all_assets = set(classical_weights.keys()) | set(quantum_weights.keys())
+            classical_data = [classical_weights.get(asset, 0) for asset in all_assets]
+            quantum_data = [quantum_weights.get(asset, 0) for asset in all_assets]
+            
+            x = np.arange(len(all_assets))
+            width = 0.35
+            
+            axes[0, 0].bar(x - width/2, classical_data, width, label='Classical', alpha=0.8)
+            axes[0, 0].bar(x + width/2, quantum_data, width, label='Quantum', alpha=0.8)
+            axes[0, 0].set_xlabel('Assets')
+            axes[0, 0].set_ylabel('Weights')
+            axes[0, 0].set_title('Asset Weight Comparison')
+            axes[0, 0].set_xticks(x)
+            axes[0, 0].set_xticklabels(all_assets, rotation=45)
+            axes[0, 0].legend()
+            axes[0, 0].grid(True, alpha=0.3)
+            
+            # Portfolio size comparison
+            portfolio_sizes = ['Classical', 'Quantum']
+            asset_counts = [len(classical_weights), len(quantum_weights)]
+            
+            axes[0, 1].bar(portfolio_sizes, asset_counts, color=['skyblue', 'lightcoral'])
+            axes[0, 1].set_ylabel('Number of Assets')
+            axes[0, 1].set_title('Portfolio Size Comparison')
+            axes[0, 1].grid(True, alpha=0.3)
+            
+            # Weight distribution
+            axes[1, 0].hist(list(classical_weights.values()), bins=10, alpha=0.7, label='Classical', color='skyblue')
+            axes[1, 0].hist(list(quantum_weights.values()), bins=10, alpha=0.7, label='Quantum', color='lightcoral')
+            axes[1, 0].set_xlabel('Weight Values')
+            axes[1, 0].set_ylabel('Frequency')
+            axes[1, 0].set_title('Weight Distribution')
+            axes[1, 0].legend()
+            axes[1, 0].grid(True, alpha=0.3)
+            
+            # Diversification comparison
+            classical_diversification = 1 - sum(w**2 for w in classical_weights.values())
+            quantum_diversification = 1 - sum(w**2 for w in quantum_weights.values())
+            
+            diversification_data = [classical_diversification, quantum_diversification]
+            axes[1, 1].bar(portfolio_sizes, diversification_data, color=['skyblue', 'lightcoral'])
+            axes[1, 1].set_ylabel('Diversification Index')
+            axes[1, 1].set_title('Portfolio Diversification')
+            axes[1, 1].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig("performance_comparison.png", dpi=300, bbox_inches='tight')
+        plt.show()
+    
+    def _create_risk_return_charts(self, classical_result: dict, quantum_result: dict):
+        """Create risk-return analysis charts."""
+        if not self.assets:
+            return
+        
+        # Calculate historical returns
+        prices_df = self._build_price_dataframe()
+        returns_df = prices_df.pct_change().dropna()
+        
+        classical_weights = classical_result.get("selected_assets_weights", {})
+        quantum_weights = quantum_result.get("selected_assets_weights", {})
+        
+        if classical_weights and quantum_weights:
+            # Portfolio returns
+            classical_portfolio_returns = self._calculate_portfolio_returns(returns_df, classical_weights)
+            quantum_portfolio_returns = self._calculate_portfolio_returns(returns_df, quantum_weights)
+            
+            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+            
+            # Cumulative returns
+            classical_cumulative = (1 + classical_portfolio_returns).cumprod()
+            quantum_cumulative = (1 + quantum_portfolio_returns).cumprod()
+            
+            axes[0, 0].plot(classical_cumulative.index, classical_cumulative.values, label='Classical', linewidth=2)
+            axes[0, 0].plot(quantum_cumulative.index, quantum_cumulative.values, label='Quantum', linewidth=2)
+            axes[0, 0].set_title('Cumulative Portfolio Returns')
+            axes[0, 0].set_xlabel('Date')
+            axes[0, 0].set_ylabel('Cumulative Return')
+            axes[0, 0].legend()
+            axes[0, 0].grid(True, alpha=0.3)
+            
+            # Return distribution
+            axes[0, 1].hist(classical_portfolio_returns, bins=30, alpha=0.7, label='Classical', color='skyblue')
+            axes[0, 1].hist(quantum_portfolio_returns, bins=30, alpha=0.7, label='Quantum', color='lightcoral')
+            axes[0, 1].set_xlabel('Daily Returns')
+            axes[0, 1].set_ylabel('Frequency')
+            axes[0, 1].set_title('Return Distribution')
+            axes[0, 1].legend()
+            axes[0, 1].grid(True, alpha=0.3)
+            
+            # Risk-return scatter
+            classical_risk = classical_portfolio_returns.std() * np.sqrt(252)
+            classical_return = classical_portfolio_returns.mean() * 252
+            quantum_risk = quantum_portfolio_returns.std() * np.sqrt(252)
+            quantum_return = quantum_portfolio_returns.mean() * 252
+            
+            axes[1, 0].scatter(classical_risk, classical_return, s=200, label='Classical', color='skyblue', alpha=0.8)
+            axes[1, 0].scatter(quantum_risk, quantum_return, s=200, label='Quantum', color='lightcoral', alpha=0.8)
+            axes[1, 0].set_xlabel('Annualized Risk (Volatility)')
+            axes[1, 0].set_ylabel('Annualized Return')
+            axes[1, 0].set_title('Risk-Return Profile')
+            axes[1, 0].legend()
+            axes[1, 0].grid(True, alpha=0.3)
+            
+            # Sharpe ratio comparison
+            classical_sharpe = classical_return / classical_risk if classical_risk > 0 else 0
+            quantum_sharpe = quantum_return / quantum_risk if quantum_risk > 0 else 0
+            
+            sharpe_data = [classical_sharpe, quantum_sharpe]
+            axes[1, 1].bar(['Classical', 'Quantum'], sharpe_data, color=['skyblue', 'lightcoral'])
+            axes[1, 1].set_ylabel('Sharpe Ratio')
+            axes[1, 1].set_title('Risk-Adjusted Returns')
+            axes[1, 1].grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig("risk_return_analysis.png", dpi=300, bbox_inches='tight')
+            plt.show()
+    
+    def _create_correlation_heatmap(self):
+        """Create asset correlation heatmap."""
+        if not self.assets:
+            return
+        
+        prices_df = self._build_price_dataframe()
+        returns_df = prices_df.pct_change().dropna()
+        
+        if returns_df.empty:
+            return
+        
+        # Calculate correlation matrix
+        corr_matrix = returns_df.corr()
+        
+        plt.figure(figsize=(12, 10))
+        mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+        sns.heatmap(corr_matrix, mask=mask, annot=True, cmap='coolwarm', center=0,
+                   square=True, linewidths=0.5, cbar_kws={"shrink": .8})
+        plt.title('Asset Correlation Matrix', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+        plt.savefig("correlation_heatmap.png", dpi=300, bbox_inches='tight')
+        plt.show()
+    
+    def _build_price_dataframe(self) -> pd.DataFrame:
+        """Build price DataFrame from asset data."""
+        series_list = []
+        for ticker, info in self.assets.items():
+            price_series = pd.Series(info["history"], name=ticker)
+            series_list.append(price_series)
+        
+        df = pd.concat(series_list, axis=1).sort_index().astype(float)
+        df.index = pd.to_datetime(df.index)
+        return df
+    
+    def _calculate_portfolio_returns(self, returns_df: pd.DataFrame, weights: dict) -> pd.Series:
+        """Calculate portfolio returns given weights."""
+        portfolio_returns = pd.Series(0.0, index=returns_df.index)
+        
+        for asset, weight in weights.items():
+            if asset in returns_df.columns:
+                portfolio_returns += weight * returns_df[asset]
+        
+        return portfolio_returns
+    
+    def _print_summary_statistics(self, classical_result: dict, quantum_result: dict):
+        """Print summary statistics."""
+        print("\n" + "="*80)
+        print("PORTFOLIO ANALYSIS SUMMARY")
+        print("="*80)
+        
+        classical_weights = classical_result.get("selected_assets_weights", {})
+        quantum_weights = quantum_result.get("selected_assets_weights", {})
+        
+        print(f"\n📊 Portfolio Composition:")
+        print(f"   Classical: {len(classical_weights)} assets")
+        print(f"   Quantum:   {len(quantum_weights)} assets")
+        
+        if classical_weights and quantum_weights:
+            print(f"\n⚖️  Weight Statistics:")
+            classical_weights_list = list(classical_weights.values())
+            quantum_weights_list = list(quantum_weights.values())
+            
+            print(f"   Classical - Min: {min(classical_weights_list):.4f}, Max: {max(classical_weights_list):.4f}")
+            print(f"   Quantum   - Min: {min(quantum_weights_list):.4f}, Max: {max(quantum_weights_list):.4f}")
+            
+            print(f"\n🎯 Diversification:")
+            classical_div = 1 - sum(w**2 for w in classical_weights_list)
+            quantum_div = 1 - sum(w**2 for w in quantum_weights_list)
+            print(f"   Classical: {classical_div:.4f}")
+            print(f"   Quantum:   {quantum_div:.4f}")
+        
+        print(f"\n📈 Generated Charts:")
+        print("   - portfolio_composition.png")
+        print("   - performance_comparison.png")
+        print("   - risk_return_analysis.png")
+        print("   - correlation_heatmap.png")
+
+
+def main():
+    """Main execution function."""
     try:
-        result = main.run(test_data, {}, {})
-        return result
+        analyzer = PortfolioAnalyzer()
+        analyzer.run_analysis()
     except Exception as e:
-        print(f"Error running optimization with quantum={use_quantum}: {e}")
-        return None
+        print(f"❌ Analysis failed: {e}")
 
-def calculate_portfolio_metrics(weights, assets, evaluation_date):
-    """Calculate portfolio performance metrics."""
-    if not weights:
-        return {}
-    
-    # Build price dataframe
-    prices = portfolio._build_price_df(assets)
-    returns = portfolio._daily_returns(prices)
-    
-    # Get latest window for analysis
-    window_prices = portfolio._latest_window(prices, evaluation_date, 100)
-    window_returns = portfolio._daily_returns(window_prices)
-    
-    # Calculate metrics for selected assets
-    selected_assets = list(weights.keys())
-    portfolio_returns = window_returns[selected_assets]
-    
-    # Portfolio weights as array
-    weight_array = np.array([weights[asset] for asset in selected_assets])
-    
-    # Calculate portfolio metrics
-    portfolio_return = np.sum(portfolio_returns.mean() * weight_array) * 252  # Annualized
-    portfolio_volatility = np.sqrt(np.dot(weight_array.T, np.dot(portfolio_returns.cov() * 252, weight_array)))
-    sharpe_ratio = portfolio_return / portfolio_volatility if portfolio_volatility > 0 else 0
-    
-    # Maximum drawdown
-    portfolio_cumulative = (1 + portfolio_returns.dot(weight_array)).cumprod()
-    rolling_max = portfolio_cumulative.expanding().max()
-    drawdown = (portfolio_cumulative - rolling_max) / rolling_max
-    max_drawdown = drawdown.min()
-    
-    return {
-        'return': portfolio_return,
-        'volatility': portfolio_volatility,
-        'sharpe_ratio': sharpe_ratio,
-        'max_drawdown': max_drawdown,
-        'num_assets': len(selected_assets),
-        'concentration': np.sum(weight_array ** 2)  # Herfindahl index
-    }
-
-def create_comparison_analysis():
-    """Create comprehensive comparison analysis."""
-    print("Loading input data...")
-    input_data = load_input_data()
-    
-    print("Running classical optimization...")
-    classical_result = run_portfolio_optimization(input_data, use_quantum=False)
-    
-    print("Running quantum optimization...")
-    quantum_result = run_portfolio_optimization(input_data, use_quantum=True)
-    
-    if not classical_result or not quantum_result:
-        print("Error: Could not run both optimizations")
-        return
-    
-    # Calculate metrics for both approaches
-    evaluation_date = input_data.get("evaluation_date", "2024-04-01")
-    assets = input_data["assets"]
-    
-    classical_metrics = calculate_portfolio_metrics(
-        classical_result["selected_assets_weights"], 
-        assets, 
-        evaluation_date
-    )
-    
-    quantum_metrics = calculate_portfolio_metrics(
-        quantum_result["selected_assets_weights"], 
-        assets, 
-        evaluation_date
-    )
-    
-    # Create comprehensive visualizations
-    create_portfolio_composition_charts(classical_result, quantum_result)
-    create_performance_comparison_charts(classical_metrics, quantum_metrics)
-    create_risk_return_charts(classical_result, quantum_result, assets, evaluation_date)
-    create_asset_correlation_heatmap(classical_result, quantum_result, assets, evaluation_date)
-    
-    # Print summary statistics
-    print_summary_statistics(classical_result, quantum_result, classical_metrics, quantum_metrics)
-
-def create_portfolio_composition_charts(classical_result, quantum_result):
-    """Create portfolio composition comparison charts."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-    
-    # Classical portfolio
-    classical_weights = classical_result["selected_assets_weights"]
-    if classical_weights:
-        assets = list(classical_weights.keys())
-        weights = list(classical_weights.values())
-        ax1.pie(weights, labels=assets, autopct='%1.1f%%', startangle=90)
-        ax1.set_title('Classical Portfolio Composition')
-    
-    # Quantum portfolio
-    quantum_weights = quantum_result["selected_assets_weights"]
-    if quantum_weights:
-        assets = list(quantum_weights.keys())
-        weights = list(quantum_weights.values())
-        ax2.pie(weights, labels=assets, autopct='%1.1f%%', startangle=90)
-        ax2.set_title('Quantum Portfolio Composition')
-    
-    plt.tight_layout()
-    plt.savefig('portfolio_composition_comparison.png', dpi=300, bbox_inches='tight')
-    plt.show()
-
-def create_performance_comparison_charts(classical_metrics, quantum_metrics):
-    """Create performance comparison charts."""
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
-    
-    # Metrics to compare
-    metrics = ['return', 'volatility', 'sharpe_ratio', 'max_drawdown']
-    metric_names = ['Annual Return', 'Annual Volatility', 'Sharpe Ratio', 'Max Drawdown']
-    
-    classical_values = [classical_metrics.get(m, 0) for m in metrics]
-    quantum_values = [quantum_metrics.get(m, 0) for m in metrics]
-    
-    x = np.arange(len(metrics))
-    width = 0.35
-    
-    ax1.bar(x - width/2, classical_values, width, label='Classical', alpha=0.8)
-    ax1.bar(x + width/2, quantum_values, width, label='Quantum', alpha=0.8)
-    ax1.set_xlabel('Metrics')
-    ax1.set_ylabel('Values')
-    ax1.set_title('Portfolio Performance Comparison')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(metric_names, rotation=45)
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # Risk-return scatter plot
-    ax2.scatter(classical_metrics.get('volatility', 0), classical_metrics.get('return', 0), 
-                s=200, label='Classical', alpha=0.7, color='blue')
-    ax2.scatter(quantum_metrics.get('volatility', 0), quantum_metrics.get('return', 0), 
-                s=200, label='Quantum', alpha=0.7, color='red')
-    ax2.set_xlabel('Volatility (Risk)')
-    ax2.set_ylabel('Return')
-    ax2.set_title('Risk-Return Profile')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    # Portfolio size comparison
-    portfolio_sizes = [classical_metrics.get('num_assets', 0), quantum_metrics.get('num_assets', 0)]
-    labels = ['Classical', 'Quantum']
-    colors = ['blue', 'red']
-    ax3.bar(labels, portfolio_sizes, color=colors, alpha=0.7)
-    ax3.set_ylabel('Number of Assets')
-    ax3.set_title('Portfolio Diversification')
-    ax3.grid(True, alpha=0.3)
-    
-    # Concentration comparison (Herfindahl index)
-    concentrations = [classical_metrics.get('concentration', 0), quantum_metrics.get('concentration', 0)]
-    ax4.bar(labels, concentrations, color=colors, alpha=0.7)
-    ax4.set_ylabel('Concentration Index')
-    ax4.set_title('Portfolio Concentration (Lower = More Diversified)')
-    ax4.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig('performance_comparison.png', dpi=300, bbox_inches='tight')
-    plt.show()
-
-def create_risk_return_charts(classical_result, quantum_result, assets, evaluation_date):
-    """Create risk-return analysis charts."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-    
-    # Build price and return data
-    prices = portfolio._build_price_df(assets)
-    returns = portfolio._daily_returns(prices)
-    window_returns = portfolio._daily_returns(portfolio._latest_window(prices, evaluation_date, 100))
-    
-    # Calculate individual asset metrics
-    asset_metrics = {}
-    for asset in assets.keys():
-        if asset in window_returns.columns:
-            asset_returns = window_returns[asset].dropna()
-            if len(asset_returns) > 0:
-                asset_metrics[asset] = {
-                    'return': asset_returns.mean() * 252,
-                    'volatility': asset_returns.std() * np.sqrt(252)
-                }
-    
-    # Plot all assets
-    returns_list = [metrics['return'] for metrics in asset_metrics.values()]
-    volatilities_list = [metrics['volatility'] for metrics in asset_metrics.values()]
-    asset_names = list(asset_metrics.keys())
-    
-    ax1.scatter(volatilities_list, returns_list, alpha=0.6, s=50, color='gray', label='All Assets')
-    
-    # Highlight selected assets for classical
-    if classical_result["selected_assets_weights"]:
-        classical_assets = list(classical_result["selected_assets_weights"].keys())
-        classical_returns = [asset_metrics[asset]['return'] for asset in classical_assets if asset in asset_metrics]
-        classical_volatilities = [asset_metrics[asset]['volatility'] for asset in classical_assets if asset in asset_metrics]
-        ax1.scatter(classical_volatilities, classical_returns, s=100, color='blue', alpha=0.8, label='Classical Selected')
-        
-        # Add labels for classical assets
-        for i, asset in enumerate(classical_assets):
-            if asset in asset_metrics:
-                ax1.annotate(asset, (classical_volatilities[i], classical_returns[i]), 
-                            xytext=(5, 5), textcoords='offset points', fontsize=8)
-    
-    # Highlight selected assets for quantum
-    if quantum_result["selected_assets_weights"]:
-        quantum_assets = list(quantum_result["selected_assets_weights"].keys())
-        quantum_returns = [asset_metrics[asset]['return'] for asset in quantum_assets if asset in asset_metrics]
-        quantum_volatilities = [asset_metrics[asset]['volatility'] for asset in quantum_assets if asset in asset_metrics]
-        ax1.scatter(quantum_volatilities, quantum_returns, s=100, color='red', alpha=0.8, label='Quantum Selected')
-        
-        # Add labels for quantum assets
-        for i, asset in enumerate(quantum_assets):
-            if asset in asset_metrics:
-                ax1.annotate(asset, (quantum_volatilities[i], quantum_returns[i]), 
-                            xytext=(5, 5), textcoords='offset points', fontsize=8)
-    
-    ax1.set_xlabel('Volatility (Risk)')
-    ax1.set_ylabel('Annual Return')
-    ax1.set_title('Risk-Return Profile: All Assets vs Selected')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # Portfolio weights comparison
-    if classical_result["selected_assets_weights"] and quantum_result["selected_assets_weights"]:
-        all_assets = set(classical_result["selected_assets_weights"].keys()) | set(quantum_result["selected_assets_weights"].keys())
-        
-        classical_weights = [classical_result["selected_assets_weights"].get(asset, 0) for asset in all_assets]
-        quantum_weights = [quantum_result["selected_assets_weights"].get(asset, 0) for asset in all_assets]
-        
-        x = np.arange(len(all_assets))
-        width = 0.35
-        
-        ax2.bar(x - width/2, classical_weights, width, label='Classical', alpha=0.8, color='blue')
-        ax2.bar(x + width/2, quantum_weights, width, label='Quantum', alpha=0.8, color='red')
-        ax2.set_xlabel('Assets')
-        ax2.set_ylabel('Weight')
-        ax2.set_title('Portfolio Weights Comparison')
-        ax2.set_xticks(x)
-        ax2.set_xticklabels(list(all_assets), rotation=45)
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig('risk_return_analysis.png', dpi=300, bbox_inches='tight')
-    plt.show()
-
-def create_asset_correlation_heatmap(classical_result, quantum_result, assets, evaluation_date):
-    """Create correlation heatmap for selected assets."""
-    if not classical_result["selected_assets_weights"] or not quantum_result["selected_assets_weights"]:
-        return
-    
-    # Build return data
-    prices = portfolio._build_price_df(assets)
-    returns = portfolio._daily_returns(prices)
-    window_returns = portfolio._daily_returns(portfolio._latest_window(prices, evaluation_date, 100))
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-    
-    # Classical portfolio correlation
-    classical_assets = list(classical_result["selected_assets_weights"].keys())
-    classical_returns = window_returns[classical_assets].dropna()
-    if len(classical_returns) > 0:
-        classical_corr = classical_returns.corr()
-        sns.heatmap(classical_corr, annot=True, cmap='coolwarm', center=0, ax=ax1, 
-                    square=True, fmt='.2f', cbar_kws={'shrink': 0.8})
-        ax1.set_title('Classical Portfolio Asset Correlations')
-    
-    # Quantum portfolio correlation
-    quantum_assets = list(quantum_result["selected_assets_weights"].keys())
-    quantum_returns = window_returns[quantum_assets].dropna()
-    if len(quantum_returns) > 0:
-        quantum_corr = quantum_returns.corr()
-        sns.heatmap(quantum_corr, annot=True, cmap='coolwarm', center=0, ax=ax2, 
-                    square=True, fmt='.2f', cbar_kws={'shrink': 0.8})
-        ax2.set_title('Quantum Portfolio Asset Correlations')
-    
-    plt.tight_layout()
-    plt.savefig('correlation_heatmaps.png', dpi=300, bbox_inches='tight')
-    plt.show()
-
-def print_summary_statistics(classical_result, quantum_result, classical_metrics, quantum_metrics):
-    """Print comprehensive summary statistics."""
-    print("\n" + "="*80)
-    print("PORTFOLIO OPTIMIZATION ANALYSIS SUMMARY")
-    print("="*80)
-    
-    print(f"\nClassical Portfolio Results:")
-    print(f"  Selected Assets: {list(classical_result['selected_assets_weights'].keys())}")
-    print(f"  Number of Assets: {classical_metrics.get('num_assets', 0)}")
-    print(f"  Annual Return: {classical_metrics.get('return', 0):.4f}")
-    print(f"  Annual Volatility: {classical_metrics.get('volatility', 0):.4f}")
-    print(f"  Sharpe Ratio: {classical_metrics.get('sharpe_ratio', 0):.4f}")
-    print(f"  Max Drawdown: {classical_metrics.get('max_drawdown', 0):.4f}")
-    print(f"  Concentration Index: {classical_metrics.get('concentration', 0):.4f}")
-    
-    print(f"\nQuantum Portfolio Results:")
-    print(f"  Selected Assets: {list(quantum_result['selected_assets_weights'].keys())}")
-    print(f"  Number of Assets: {quantum_metrics.get('num_assets', 0)}")
-    print(f"  Annual Return: {quantum_metrics.get('return', 0):.4f}")
-    print(f"  Annual Volatility: {quantum_metrics.get('volatility', 0):.4f}")
-    print(f"  Sharpe Ratio: {quantum_metrics.get('sharpe_ratio', 0):.4f}")
-    print(f"  Max Drawdown: {quantum_metrics.get('max_drawdown', 0):.4f}")
-    print(f"  Concentration Index: {quantum_metrics.get('concentration', 0):.4f}")
-    
-    print(f"\nPerformance Comparison:")
-    if classical_metrics.get('sharpe_ratio', 0) > 0 and quantum_metrics.get('sharpe_ratio', 0) > 0:
-        sharpe_improvement = ((quantum_metrics.get('sharpe_ratio', 0) - classical_metrics.get('sharpe_ratio', 0)) / 
-                             classical_metrics.get('sharpe_ratio', 0)) * 100
-        print(f"  Sharpe Ratio Improvement: {sharpe_improvement:+.2f}%")
-    
-    if classical_metrics.get('volatility', 0) > 0 and quantum_metrics.get('volatility', 0) > 0:
-        risk_reduction = ((classical_metrics.get('volatility', 0) - quantum_metrics.get('volatility', 0)) / 
-                         classical_metrics.get('volatility', 0)) * 100
-        print(f"  Risk Reduction: {risk_reduction:+.2f}%")
-    
-    print(f"\nDiversification Analysis:")
-    print(f"  Classical Portfolio Size: {classical_metrics.get('num_assets', 0)} assets")
-    print(f"  Quantum Portfolio Size: {quantum_metrics.get('num_assets', 0)} assets")
-    print(f"  Classical Concentration: {classical_metrics.get('concentration', 0):.4f}")
-    print(f"  Quantum Concentration: {quantum_metrics.get('concentration', 0):.4f}")
-    
-    print("\n" + "="*80)
 
 if __name__ == "__main__":
-    print("Starting Portfolio Analysis and Visualization...")
-    create_comparison_analysis()
-    print("\nAnalysis complete! Check the generated PNG files for visualizations.")
+    main()
